@@ -3,6 +3,9 @@ package __performance_config
 import (
 	"context"
 	"fmt"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/profilecreator"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodes"
+	"k8s.io/utils/cpuset"
 	"os"
 	"time"
 
@@ -159,8 +162,27 @@ func externalPerformanceProfile(performanceManifest string) (*performancev2.Perf
 }
 
 func testProfile() *performancev2.PerformanceProfile {
-	reserved := performancev2.CPUSet("0")
-	isolated := performancev2.CPUSet("1-3")
+	var reservedCpus, isolatedCpus, offlinedCpus cpuset.CPUSet
+	reservedCpus, _ = cpuset.Parse("0")
+	isolatedCpus, _ = cpuset.Parse("1-3")
+	offlinedCpus = cpuset.CPUSet{}
+
+	mgPathForPPC, foundPath := os.LookupEnv("MG_PATH")
+	if foundPath {
+		testlog.Infof("Consuming MG from %s to generate cpu sets specifications by PPC", mgPathForPPC)
+		workerNodes, err := nodes.GetByLabels(testutils.NodeSelectorLabels)
+		Expect(err).ToNot(HaveOccurred(), "error getting the worker nodes: %v", testutils.RoleWorkerCNF, err)
+		Expect(workerNodes).ToNot(BeEmpty(), "no nodes with role %q found", testutils.RoleWorkerCNF)
+		handle, err := profilecreator.NewGHWHandler(mgPathForPPC, &workerNodes[0])
+		Expect(err).ToNot(HaveOccurred())
+		systemInfo, err := handle.GatherSystemInfo()
+		Expect(err).ToNot(HaveOccurred())
+		reservedCpus, isolatedCpus, offlinedCpus, err = profilecreator.CalculateCPUSets(systemInfo, 4, 0, false, false, false)
+		Expect(err).ToNot(HaveOccurred())
+	}
+	reserved := performancev2.CPUSet(reservedCpus.String())
+	isolated := performancev2.CPUSet(isolatedCpus.String())
+	offlined := performancev2.CPUSet(offlinedCpus.String())
 	hugePagesSize := performancev2.HugePageSize("1G")
 
 	profile := &performancev2.PerformanceProfile{
@@ -175,6 +197,7 @@ func testProfile() *performancev2.PerformanceProfile {
 			CPU: &performancev2.CPU{
 				Reserved: &reserved,
 				Isolated: &isolated,
+				Offlined: &offlined,
 			},
 			HugePages: &performancev2.HugePages{
 				DefaultHugePagesSize: &hugePagesSize,
