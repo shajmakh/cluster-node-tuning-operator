@@ -2,7 +2,10 @@ package __performance_config
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/profilecreator"
+	"k8s.io/utils/cpuset"
 	"os"
 	"time"
 
@@ -159,10 +162,25 @@ func externalPerformanceProfile(performanceManifest string) (*performancev2.Perf
 }
 
 func testProfile() *performancev2.PerformanceProfile {
-	reserved := performancev2.CPUSet("0")
-	isolated := performancev2.CPUSet("1-3")
-	hugePagesSize := performancev2.HugePageSize("1G")
+	var reservedCpus, isolatedCpus, offlinedCpus cpuset.CPUSet
+	reservedCpus, _ = cpuset.Parse("0")
+	isolatedCpus, _ = cpuset.Parse("1-3")
+	offlinedCpus = cpuset.CPUSet{}
 
+	jsonFilePath, foundPath := os.LookupEnv("SYSTEM_INFO_JSON_FILE_PATH")
+	if foundPath {
+		testlog.Infof("Consuming provided system info from json file %q to generate cpu sets specifications by PPC", jsonFilePath)
+		file, _ := os.ReadFile(jsonFilePath)
+		systemInfo := profilecreator.SystemInfo{}
+		err := json.Unmarshal([]byte(file), &systemInfo)
+		Expect(err).ToNot(HaveOccurred(), "faied to parse the provided data: %v", err)
+		reservedCpus, isolatedCpus, offlinedCpus, err = profilecreator.CalculateCPUSets(&systemInfo, 2, 0, false, false, false)
+		Expect(err).ToNot(HaveOccurred())
+	}
+	reserved := performancev2.CPUSet(reservedCpus.String())
+	isolated := performancev2.CPUSet(isolatedCpus.String())
+	offlined := performancev2.CPUSet(offlinedCpus.String())
+	hugePagesSize := performancev2.HugePageSize("1G")
 	profile := &performancev2.PerformanceProfile{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "PerformanceProfile",
@@ -175,6 +193,7 @@ func testProfile() *performancev2.PerformanceProfile {
 			CPU: &performancev2.CPU{
 				Reserved: &reserved,
 				Isolated: &isolated,
+				Offlined: &offlined,
 			},
 			HugePages: &performancev2.HugePages{
 				DefaultHugePagesSize: &hugePagesSize,
