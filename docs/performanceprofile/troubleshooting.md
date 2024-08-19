@@ -1,6 +1,6 @@
 # Troubleshooting
 
-## Verifying the operator deployment
+ ## Verifying the operator deployment
 
 - check existence and status of the Node Tuning Operator `Deployment`  
   `$ oc get deployment -A | grep cluster-node-tuning-operator`
