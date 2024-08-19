@@ -13,7 +13,7 @@ All the config files in the Openshift release repository have OWNER files in the
 so they can be modified without approval of Openshift release engineers.
 
 Documentation on how to use the config files and generate the jobs can be found in the READMEs in the release repo:
-- [OpenShift Release Tooling](https://github.com/openshift/release/blob/master/README.md)  
+- [OpenShift Release T ooling](https://github.com/openshift/release/blob/master/README.md)  
 - [CI Operator](https://github.com/openshift/release/blob/master/ci-operator/README.md)
 
 
