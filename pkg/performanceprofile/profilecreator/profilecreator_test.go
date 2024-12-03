@@ -1374,8 +1374,9 @@ var _ = Describe("PerformanceProfileCreator: Ensuring Nodes hardware equality", 
 			Expect(err).ToNot(HaveOccurred())
 
 			nodeHandles := []*GHWHandler{node1Handle, node2Handle}
-			err = EnsureNodesHaveTheSameHardware(nodeHandles)
+			differentCoreIDsFound, err := EnsureNodesHaveTheSameHardware(nodeHandles)
 			Expect(err).ToNot(HaveOccurred())
+			Expect(differentCoreIDsFound).To(BeFalse())
 		})
 	})
 
@@ -1395,8 +1396,9 @@ var _ = Describe("PerformanceProfileCreator: Ensuring Nodes hardware equality", 
 			Expect(err).ToNot(HaveOccurred())
 
 			nodeHandles := []*GHWHandler{node1Handle, node2Handle}
-			err = EnsureNodesHaveTheSameHardware(nodeHandles)
+			differentCoreIDsFound, err := EnsureNodesHaveTheSameHardware(nodeHandles)
 			Expect(err).To(HaveOccurred())
+			Expect(differentCoreIDsFound).To(BeFalse())
 		})
 	})
 })
@@ -1454,34 +1456,46 @@ var _ = Describe("PerformanceProfileCreator: Test Helper Function ensureSameTopo
 
 	Context("Check if ensureSameTopology is working correctly", func() {
 		It("nodes with similar topology should not return error", func() {
-			err := ensureSameTopology(&originTopology, &mutatedTopology)
+			diffCoreIDsFound, err := ensureSameTopology(&originTopology, &mutatedTopology)
 			Expect(err).ToNot(HaveOccurred())
+			Expect(diffCoreIDsFound).To(BeFalse())
 		})
 		It("nodes with different architecture should return error", func() {
 			mutatedTopology.Architecture = topology.ARCHITECTURE_SMP
-			err := ensureSameTopology(&originTopology, &mutatedTopology)
+			diffCoreIDsFound, err := ensureSameTopology(&originTopology, &mutatedTopology)
 			Expect(err).To(HaveOccurred())
+			Expect(diffCoreIDsFound).To(BeFalse())
 		})
 		It("nodes with different number of NUMA nodes should return error", func() {
 			mutatedTopology.Nodes = mutatedTopology.Nodes[1:]
-			err := ensureSameTopology(&originTopology, &mutatedTopology)
+			diffCoreIDsFound, err := ensureSameTopology(&originTopology, &mutatedTopology)
 			Expect(err).To(HaveOccurred())
+			Expect(diffCoreIDsFound).To(BeFalse())
 		})
 		It("nodes with different number threads per core should return error", func() {
 			mutatedTopology.Nodes[1].Cores[1].NumThreads = 1
-			err := ensureSameTopology(&originTopology, &mutatedTopology)
+			diffCoreIDsFound, err := ensureSameTopology(&originTopology, &mutatedTopology)
 			Expect(err).To(HaveOccurred())
+			Expect(diffCoreIDsFound).To(BeFalse())
 		})
 		It("nodes with different thread IDs should return error", func() {
 			mutatedTopology.Nodes[1].Cores[1].LogicalProcessors[1] = 15
-			err := ensureSameTopology(&originTopology, &mutatedTopology)
+			diffCoreIDsFound, err := ensureSameTopology(&originTopology, &mutatedTopology)
 			Expect(err).To(HaveOccurred())
+			Expect(diffCoreIDsFound).To(BeFalse())
 		})
 		It("same cores with different indices should still considered equivalent", func() {
 			mutatedTopology.Nodes[0].Cores[0].Index = 1
 			mutatedTopology.Nodes[0].Cores[1].Index = 0
-			err := ensureSameTopology(&originTopology, &mutatedTopology)
+			diffCoreIDsFound, err := ensureSameTopology(&originTopology, &mutatedTopology)
 			Expect(err).ToNot(HaveOccurred())
+			Expect(diffCoreIDsFound).To(BeFalse())
+		})
+		It("same cores with different Core IDs should still considered equivalent but with a warning", func() {
+			mutatedTopology.Nodes[0].Cores[0].ID = 3
+			diffCoreIDsFound, err := ensureSameTopology(&originTopology, &mutatedTopology)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(diffCoreIDsFound).To(BeTrue())
 		})
 	})
 })

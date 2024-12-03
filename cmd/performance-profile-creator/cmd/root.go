@@ -89,6 +89,14 @@ var (
 # hardwareTuning:
 #   isolatedCpuFreq: <Maximum frequency for applications running on isolated cpus>
 #   reservedCpuFreq: <Maximum frequency for platform software running on reserved cpus>`
+	differentCoreIDsMessage = `# PPC tolerates having different core IDs for the same logical processors on 
+# the same NUMA cell compared with other nodes that belong to the stated pool.
+# While core IDs numbering may differ between two systems, it still can be considered 
+# that NUMA and HW topologies are similar; However this depends on the combination 
+# setting of the hardware, software and firmware as that may affect the mapping pattern. 
+# While the performance profile controller depends on the logical processors per NUMA, 
+# having different IDs may affect your system's performance optimization where the cores
+# location matters, thus use the generated profile with caution.`
 )
 
 // ProfileData collects and stores all the data needed for profile creation
@@ -168,7 +176,9 @@ func NewRootCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if err := profilecreator.EnsureNodesHaveTheSameHardware(nodesHandlers); err != nil {
+
+			differentCoreIDsFound, err := profilecreator.EnsureNodesHaveTheSameHardware(nodesHandlers)
+			if err != nil {
 				return fmt.Errorf("targeted nodes differ: %w", err)
 			}
 			// We make sure that the matched Nodes are the same
@@ -182,7 +192,7 @@ func NewRootCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return writeProfile(profile, profileData.enableHardwareTuning)
+			return writeProfile(profile, profileData.enableHardwareTuning, differentCoreIDsFound)
 		},
 	}
 	pcArgs.AddFlags(root.PersistentFlags())
@@ -523,7 +533,7 @@ func makePerformanceProfileFrom(profileData ProfileData) (runtime.Object, error)
 	return profile, nil
 }
 
-func writeProfile(obj runtime.Object, enableHardwareTuning bool) error {
+func writeProfile(obj runtime.Object, enableHardwareTuning, differentCoreIDsFound bool) error {
 	// write CSV to out dir
 	writer := strings.Builder{}
 	if err := MarshallObject(obj, &writer); err != nil {
@@ -532,6 +542,12 @@ func writeProfile(obj runtime.Object, enableHardwareTuning bool) error {
 
 	if enableHardwareTuning {
 		if _, err := writer.Write([]byte(hardwareTuningMessage)); err != nil {
+			return err
+		}
+	}
+
+	if differentCoreIDsFound {
+		if _, err := writer.Write([]byte(differentCoreIDsMessage)); err != nil {
 			return err
 		}
 	}
