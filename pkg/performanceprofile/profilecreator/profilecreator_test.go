@@ -3,18 +3,22 @@ package profilecreator
 import (
 	"fmt"
 	"path/filepath"
+	"slices"
 	"sort"
+
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+
+	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/utils/cpuset"
 
 	"github.com/jaypipes/ghw/pkg/cpu"
 	"github.com/jaypipes/ghw/pkg/topology"
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
-	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
+	mcfgv1 "github.com/openshift/api/machineconfiguration/v1"
 	log "github.com/sirupsen/logrus"
 
-	mcfgv1 "github.com/openshift/api/machineconfiguration/v1"
-	v1 "k8s.io/api/core/v1"
-	"k8s.io/utils/cpuset"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
 )
 
 const (
@@ -478,6 +482,13 @@ var _ = Describe("Performance profile creator: test with a simple cpu architectu
 			Expect(reserved.String()).To(Equal("0-3,8-11"))
 			Expect(isolated.String()).To(Equal("4-7,12-15"))
 			Expect(offlined.String()).To(Equal("16-31"))
+
+			reservedSiblings := getSiblingsListForCPUSet(sysInfo, reserved)
+			isolatedSiblings := getSiblingsListForCPUSet(sysInfo, isolated)
+			offlinedSiblings := getSiblingsListForCPUSet(sysInfo, offlined)
+			Expect(isolatedSiblings.Intersection(reservedSiblings).IsEmpty()).To(BeTrue())
+			Expect(offlinedSiblings.Intersection(reservedSiblings).IsEmpty()).To(BeTrue())
+			Expect(offlinedSiblings.Intersection(isolatedSiblings).IsEmpty()).To(BeTrue())
 		})
 
 		It("diag0003 cannot offline a full socket because reserved are splitted over all NUMA zones", func() {
@@ -631,6 +642,25 @@ var _ = Describe("Performance profile creator: test with a simple cpu architectu
 		})
 	})
 })
+
+func getSiblingsListForCPUSet(sysinfo systemInfo, cpus cpuset.CPUSet) cpuset.CPUSet {
+	parsedCPUs := cpus.List()
+	cpuInfo := sysinfo.CpuInfo.CpuInfo
+	siblingsSet := sets.Set[int]{}
+	for _, cpu := range parsedCPUs {
+		for _, physicalProc := range cpuInfo.Processors {
+			cores := physicalProc.Cores
+			for _, core := range cores {
+				if slices.Contains(core.LogicalProcessors, cpu) {
+					siblingsSet.Insert(core.LogicalProcessors...)
+				}
+			}
+
+		}
+	}
+	siblingsInt := siblingsSet.UnsortedList()
+	return cpuset.New(siblingsInt...)
+}
 
 var _ = Describe("PerformanceProfileCreator: Populating Reserved and Isolated CPUs in Performance Profile", func() {
 	var mustGatherDirAbsolutePath string
